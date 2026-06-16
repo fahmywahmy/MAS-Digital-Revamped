@@ -1,0 +1,22 @@
+{
+  "name": "mas-digital-revamped",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Lean agency-tool rebuild of MAS Digital. Data layer first.",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:validate": "dotenv -e .env -- prisma validate",
+    "db:deploy": "dotenv -e .env -- prisma migrate deploy",
+    "db:status": "dotenv -e .env -- prisma migrate status",
+    "db:resolve": "dotenv -e .env -- prisma migrate resolve",
+    "db:execute": "dotenv -e .env -- prisma db execute",
+    "db:studio": "dotenv -e .env -- prisma studio"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^6.19.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  }
+}

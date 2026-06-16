@@ -1,0 +1,1105 @@
+// Prisma schema — MAS Digital Revamped (agency-tool thesis).
+// Brand is the tenancy unit. The SaaS workspace layer was removed on port
+// 2026-06-16: Tenant, TenantTier, TenantOnboardingState, TenantSiteArchitecture,
+// BrandConfig — app-layer authz is the boundary, not a Tenant/RLS stack.
+// Lineage (legacy social-geo-saas-updated, H2.A 2026-04-19):
+//   - Supabase Auth: User.id mirrors auth.uid() (UUID); no Clerk
+//   - H2/H3 models: LLMCitation, BrandInsight, VectorMemory, ApprovedReply, GeoCompetitor
+//   - AgentRun and CostLog are brand-scoped
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Pooled (transaction-mode, port 6543) connection for runtime queries.
+  url       = env("DATABASE_URL")
+  // Direct (session-mode, port 5432) connection used by `prisma migrate`.
+  // Required on Supabase free-tier projects, which expose no `db.<ref>` host —
+  // the session pooler is the only full-protocol endpoint for DDL/migrations.
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── AUTH / USER ──────────────────────────────────────────────────────────────
+// User.id is the Supabase auth.users.id (UUID). No clerkId. First-touch row
+// creation happens server-side on allowlisted sign-in (see middleware.ts).
+model User {
+  id          String   @id @db.Uuid // mirrors Supabase auth.uid()
+  email       String   @unique
+  name        String?
+  role        UserRole @default(OWNER) // internal tool, default owner
+  isSuperuser Boolean  @default(false) // global "see all brands" flag (separate from per-tenancy role)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  brands       Brand[]
+  brandMembers BrandMember[]
+  agentRuns    AgentRun[]
+
+  @@index([email])
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// ─── BRAND (replaces Organization as the tenancy primitive) ───────────────────
+model Brand {
+  id                    String   @id @default(cuid())
+  userId                String   @db.Uuid // owner (legacy 1-user-per-brand)
+  name                  String
+  slug                  String   @unique
+  vertical              String
+  targetRegions         String[] @default([])
+  language              String   @default("ar")
+  primaryColor          String   @default("#0E6655")
+  font                  String   @default("Cairo")
+  brandVoice            String   @default("") // legacy free-form voice; superseded by structured fields below
+  websiteUrl            String? // for GEO audits / schema markup work
+  competitorHandles     String[] @default([]) // H2.C GEO competitor set
+  logoUrl               String?
+  socialProfiles        Json? // Optional per-platform handles/URLs (instagram, tiktok, snapchat, facebook, x, youtube, pinterest, threads, reddit)
+  // DEPRECATED 2026-05-17 — WhatsApp surface CUT per audit. Column
+  // retained as nullable to preserve any historical brand rows; new
+  // code never reads or writes it. Drop in a future migration once
+  // verified no rows reference it.
+  whatsappPhoneNumberId String?  @unique
+
+  // ── Brand modularity (2026-05-05) — multi-lingual identity ─────────────
+  nameAr      String? // e.g. "أركان للسياحة و السفر"
+  taglineAr   String? // e.g. "للسياحة و السفر"
+  watermarkAr String? // diagonal repeat text on posters
+
+  // Full palette (Json keyed name → hex). Falls back to primaryColor when null.
+  colorPalette Json? // { navy_deepest, gold_main, sky_bright, promo_navy, promo_gold, ... }
+
+  // Logo paths relative to assets/brand/{slug}/. Resolved at render time.
+  logoPath          String? // primary logo (square or vertical)
+  logoWatermarkPath String? // optional alt for watermarks
+
+  // Brand voice — structured fields composed into a system prompt at runtime
+  voiceTone             String[] @default([]) // adjective tags
+  voicePersona          String? // who's speaking
+  targetPersona         String? // who's listening
+  voiceSignaturePhrases String[] @default([]) // 3-5 always-use phrases
+  voiceBannedPhrases    String[] @default([]) // 5-10 never-use
+  voiceExamples         String[] @default([]) // 2-3 example sentences
+
+  // Image guidance — structured fields composed into Nano Banana prompts
+  imageMood      String[] @default([]) // 3-5 mood adjectives
+  imageAnchors   String[] @default([]) // SHOULD-appear list
+  imageBanList   String[] @default([]) // hard-no list
+  colorAnchoring String? // free-form note on color → natural light mapping
+
+  // Vertical dictionary — substring matchers for per-brand affiliate logos.
+  // For travel brands: { airlines: [{keys, logoFile}], payments: [...] }.
+  // Falls back to the shared Python registries in
+  // tools/creative/render_promo_poster_v2.py (AIRLINE_LOGO_REGISTRY /
+  // PAYMENT_LOGO_REGISTRY) and tools/creative/compose_reel.py
+  // (PAYMENT_LOGO_KEYS) when null.
+  verticalDict Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity           BrandIdentity?
+  members            BrandMember[]
+  trendScans         TrendScan[]
+  strategyBriefs     StrategyBrief[]
+  contentPieces      ContentPiece[]
+  interactions       Interaction[]
+  geoAudits          GeoAudit[]
+  llmCitations       LLMCitation[]
+  brandInsights      BrandInsight[]
+  vectorMemories     VectorMemory[]
+  approvedReplies    ApprovedReply[]
+  geoCompetitors     GeoCompetitor[]
+  analyticsSnapshots AnalyticsSnapshot[]
+  agentRuns          AgentRun[]
+  costLogs           CostLog[]
+  // H4 — Paid / SEM
+  campaigns          Campaign[]
+  adCreatives        AdCreative[]
+  paidKeywords       PaidKeyword[]
+  landingPages       LandingPage[]
+  // H4 — Conversion attribution
+  conversions        Conversion[]
+  // H4 — Channel expansion
+  reviews            Review[]
+  gbpPosts           GBPPost[]
+  gbpLocations       GBPLocation[]
+
+  @@index([userId])
+}
+
+// ─── BrandIdentity: 12-section product-marketing context (Phase G.1) ──
+// Lifts coreyhaines31/marketingskills/skills/product-marketing-context/SKILL.md
+// into a DB-backed structure. The `identity` JSON column holds the 12-section
+// payload validated by Zod (TS) + a Pydantic-style schema (Python tools).
+//
+// File mirror at brands/{slug}/context.md is auto-generated from this row;
+// edits via the dashboard write to the DB and regenerate the file. Edits
+// to the file alone will be overwritten on the next save unless the operator
+// runs `tools/admin/import_brand_identity.py --from-file`.
+model BrandIdentity {
+  id              String   @id @default(cuid())
+  brandId         String   @unique
+  schemaVersion   Int      @default(1)
+  identity        Json     @default("{}")
+  completenessPct Int      @default(0) // computed at write time; 0–100
+  draftedFromFile Boolean  @default(false)
+  draftedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+}
+
+// ─── Brand membership (cross-brand operators + superuser pattern) ────────
+// Composite PK (brandId, userId) — one role per (brand, user) pair.
+// Filtering rule: user sees a brand if isSuperuser OR has a BrandMember row.
+model BrandMember {
+  brandId   String
+  userId    String    @db.Uuid
+  role      BrandRole @default(OPERATOR)
+  createdAt DateTime  @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([brandId, userId])
+  @@index([userId])
+}
+
+enum BrandRole {
+  OWNER // can edit identity + members + run pipelines
+  EDITOR // can edit identity + run pipelines
+  OPERATOR // can run pipelines, view-only on identity
+}
+
+// ─── TREND / STRATEGY / CREATIVE PIPELINE ─────────────────────────────────────
+model TrendScan {
+  id            String      @id @default(cuid())
+  brandId       String
+  date          DateTime    @default(now())
+  opportunities Json
+  status        TrendStatus @default(PENDING)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  brand          Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  strategyBriefs StrategyBrief[]
+
+  @@index([brandId])
+  @@index([date])
+}
+
+enum TrendStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model StrategyBrief {
+  id           String         @id @default(cuid())
+  brandId      String
+  trendScanId  String
+  topic        String
+  angle        String
+  hooks        Json
+  briefContent String
+  // Buyer-stage classification (steal #3, 2026-05-09). Nullable because
+  // legacy briefs predate the field and Claude may decline to classify.
+  // Source: skills/content-strategy/SKILL.md from coreyhaines31/marketingskills.
+  buyerStage   BuyerStage?
+  status       StrategyStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  brand          Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  trendScan      TrendScan       @relation(fields: [trendScanId], references: [id], onDelete: Cascade)
+  creativebriefs CreativeBrief[]
+
+  @@index([brandId])
+  @@index([trendScanId])
+  @@index([buyerStage])
+}
+
+enum BuyerStage {
+  AWARENESS
+  CONSIDERATION
+  DECISION
+  IMPLEMENTATION
+}
+
+enum StrategyStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+model CreativeBrief {
+  id              String         @id @default(cuid())
+  strategyBriefId String
+  visualDirection String
+  beatOutline     Json
+  status          CreativeStatus @default(PENDING)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  strategyBrief StrategyBrief  @relation(fields: [strategyBriefId], references: [id], onDelete: Cascade)
+  contentPieces ContentPiece[]
+
+  @@index([strategyBriefId])
+}
+
+enum CreativeStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+model ContentPiece {
+  id              String        @id @default(cuid())
+  brandId         String
+  creativeBriefId String
+  type            ContentType
+  script          String
+  evalScore       Int?
+  evalNotes       String?
+  status          ContentStatus @default(DRAFT)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  brand         Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  creativeBrief CreativeBrief @relation(fields: [creativeBriefId], references: [id], onDelete: Cascade)
+  contentCopies ContentCopy[]
+  mediaAssets   MediaAsset[]
+  publishJobs   PublishJob[]
+  adCreatives   AdCreative[] // H4 — paid creative may reuse organic content
+
+  @@index([brandId])
+  @@index([creativeBriefId])
+  @@index([status])
+}
+
+enum ContentType {
+  REEL
+  STORY
+  POST
+  CAROUSEL
+  AD
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  FAILED
+}
+
+model ContentCopy {
+  id              String   @id @default(cuid())
+  contentPieceId  String
+  platform        Platform
+  caption         String
+  hashtags        String?
+  // Steal #7 dashboard surfacing (2026-05-09 / migration 0006):
+  // ANNOTATIONS + ALTERNATIVES sections produced by generate_copy.py
+  // when --annotate is set. Nullable — null for default skeleton runs.
+  annotations     String?
+  alternatives    String?
+  // Steal #23 Seven Sweeps polish (2026-05-09 / migration 0008):
+  // Output of tools/creative/copy_polish.py. polishedCaption is the
+  // operator-shipping version; sweepFindings holds the per-sweep notes
+  // + so-what verdict + quick-pass summary. Nullable — null when the
+  // caption hasn't been polished yet.
+  polishedCaption String?
+  sweepFindings   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  contentPiece ContentPiece @relation(fields: [contentPieceId], references: [id], onDelete: Cascade)
+
+  @@unique([contentPieceId, platform])
+  @@index([contentPieceId])
+}
+
+enum Platform {
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE
+  FACEBOOK
+  // DEPRECATED 2026-05-17 — LinkedIn organic publishing CUT per audit.
+  // Retained for historical ContentCopy + Publication rows; not used
+  // by new code (workflows/05 Blotato platform list now lists 4).
+  LINKEDIN
+  // H4 — multi-channel expansion
+  SNAPCHAT
+  WHATSAPP
+  GBP // Google Business Profile
+  X // formerly Twitter
+  THREADS
+  PINTEREST
+  REDDIT
+  TELEGRAM
+}
+
+// MediaAsset.url points to Supabase Storage object URL (public bucket: brand-media).
+model MediaAsset {
+  id             String    @id @default(cuid())
+  contentPieceId String
+  type           MediaType
+  storageBucket  String    @default("brand-media") // Supabase Storage bucket
+  storagePath    String? // Path inside bucket (e.g., "brand_<id>/asset_<cuid>.mp4")
+  url            String // Public or signed URL
+  thumbnailUrl   String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  contentPiece ContentPiece @relation(fields: [contentPieceId], references: [id], onDelete: Cascade)
+  adCreatives  AdCreative[] // H4 — paid creative reusing the asset
+
+  @@index([contentPieceId])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO // H3.2 ElevenLabs narration output
+}
+
+model PublishJob {
+  id             String        @id @default(cuid())
+  contentPieceId String
+  platform       Platform
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  externalId     String?
+  status         PublishStatus @default(SCHEDULED)
+  variantLabel   String? // H3.5 bandit: "A" | "B"
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  contentPiece ContentPiece @relation(fields: [contentPieceId], references: [id], onDelete: Cascade)
+  conversions  Conversion[] // H4 — for organic-attribution
+
+  @@index([contentPieceId])
+  @@index([platform])
+  @@index([status])
+}
+
+enum PublishStatus {
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+// ─── COMMUNITY ────────────────────────────────────────────────────────────────
+model Interaction {
+  id           String          @id @default(cuid())
+  brandId      String
+  platform     Platform
+  externalId   String
+  type         InteractionType
+  content      String
+  sentiment    Sentiment
+  authorName   String
+  authorId     String
+  repliedAt    DateTime?
+  replyContent String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  brand         Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  approvedReply ApprovedReply?
+
+  @@unique([brandId, externalId])
+  @@index([brandId])
+  @@index([platform])
+  @@index([sentiment])
+}
+
+enum InteractionType {
+  COMMENT
+  DM
+  MENTION
+}
+
+enum Sentiment {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  QUESTION
+  SPAM
+  CRISIS
+}
+
+// H2.D — Approved replies become a brand-voice corpus for few-shot prompting.
+model ApprovedReply {
+  id                 String   @id @default(cuid())
+  brandId            String
+  interactionId      String   @unique
+  interactionContent String
+  replyContent       String
+  metadata           Json? // eval feedback, author, platform etc.
+  engagement         Int? // likes/hearts on the reply if known
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  brand       Brand       @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  interaction Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+}
+
+// ─── SEO / GEO (Local + Generative) ───────────────────────────────────────────
+model GeoAudit {
+  id              String   @id @default(cuid())
+  brandId         String
+  date            DateTime @default(now())
+  siteUrl         String
+  crawlData       Json
+  keywordGaps     Json
+  recommendations String
+  overallScore    Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@index([date])
+}
+
+// H2.C — Tracks whether the brand (or competitors) is cited in LLM answers.
+model LLMCitation {
+  id          String   @id @default(cuid())
+  brandId     String
+  probedAt    DateTime @default(now())
+  engine      String // "perplexity" | "openai" | "anthropic" | "gemini"
+  query       String
+  cited       Boolean  @default(false)
+  citationUrl String?
+  position    Int? // 1 = first cited source
+  competitors Json? // { "@flyworld_travels_kuwait": 1, "@bonvoyage_kw": 3, ... }
+  rawResponse Json? // full engine response for debugging
+  createdAt   DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, engine, probedAt])
+  @@index([probedAt])
+}
+
+// H2.C support: which competitors to probe per brand.
+model GeoCompetitor {
+  id         String   @id @default(cuid())
+  brandId    String
+  handle     String
+  name       String?
+  category   String? // "institutional" | "content-brand" | "creator"
+  websiteUrl String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, handle])
+  @@index([brandId])
+}
+
+// ─── ANALYTICS ────────────────────────────────────────────────────────────────
+model AnalyticsSnapshot {
+  id         String   @id @default(cuid())
+  brandId    String
+  date       DateTime @default(now())
+  platform   Platform
+  reach      Int
+  engagement Int
+  saves      Int
+  shares     Int
+  comments   Int
+  followers  Int
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@index([platform])
+  @@index([date])
+}
+
+// H2.B — Learnings written back from analytics / evals / community.
+// These are the "rules of thumb" that inform the next strategy brief.
+model BrandInsight {
+  id         String      @id @default(cuid())
+  brandId    String
+  kind       InsightKind
+  content    String
+  sourceType String // "analytics" | "eval" | "community" | "manual"
+  sourceRef  String? // e.g., contentPiece.id or interaction.id
+  weight     Float       @default(1.0) // higher = more authoritative
+  // Steal #11 (2026-05-09) — research-quality confidence per the
+  // customer-research skill from coreyhaines31/marketingskills:
+  //   HIGH   = 3+ independent sources, unprompted, consistent across segments
+  //   MEDIUM = 2 sources, or only prompted, or limited to one segment
+  //   LOW    = single source; could be an outlier; needs validation
+  // NULL on legacy rows + writers that genuinely don't have a judgment.
+  confidence Confidence?
+  createdAt  DateTime    @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, kind])
+  @@index([confidence])
+}
+
+enum InsightKind {
+  AVOID_PATTERN // "don't use X-style hooks — they underperform for this brand"
+  REFERENCE_EXAMPLE // "this exact post format hit 10× reach — use it"
+  WINNING_HOOK // specific hook pattern with evidence
+  ANOMALY // unusual signal to investigate
+  // Steal #4 / Top-5 #4 lift (2026-05-09 / migration 0009):
+  // synthesized customer-voice theme from external community sources
+  // (Reddit, YouTube, TikTok, q8mob) via tools/research/voc_mining.py.
+  // Carries its own quality contract: 3+ records → HIGH, 2 → MEDIUM,
+  // 1 → LOW per the customer-research SKILL's guardrails.
+  VOC_THEME
+  // Phase 1c Wave 3+ V15/V17/V22/V28 HITL feedback close (2026-05-17 /
+  // migration 0106). Operator actions on artifact surfaces flow into
+  // BrandInsight so the brand_voice_regenerator + bid_optimizer learn
+  // from them — three discrete actions reflect different downstream
+  // policies (regenerate vs throttle vs reroll).
+  HITL_FEEDBACK_APPROVE
+  HITL_FEEDBACK_REJECT
+  HITL_FEEDBACK_ITERATE
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ─── AGENT OBSERVABILITY ──────────────────────────────────────────────────────
+model AgentRun {
+  id           String    @id @default(cuid())
+  brandId      String?
+  userId       String    @db.Uuid
+  agentType    AgentType
+  workflowId   String
+  status       RunStatus @default(RUNNING)
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  inputData    Json
+  outputData   Json?
+  tokensUsed   Int       @default(0)
+  costUsd      Float     @default(0.0)
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  brand Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@index([userId])
+  @@index([agentType])
+  @@index([status])
+}
+
+enum AgentType {
+  ORCHESTRATOR
+  RESEARCH_STRATEGY
+  CREATIVE
+  ANALYTICS_SAFETY
+}
+
+enum RunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model CostLog {
+  id                  String    @id @default(cuid())
+  brandId             String?
+  agentType           AgentType
+  model               String
+  tokensIn            Int
+  tokensOut           Int
+  cacheReadTokens     Int       @default(0) // H1 observability
+  cacheCreationTokens Int       @default(0)
+  costUsd             Float
+  category            String
+  toolName            String?
+  createdAt           DateTime  @default(now())
+
+  brand Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  @@index([brandId])
+  @@index([agentType])
+  @@index([createdAt])
+}
+
+// ─── VECTOR MEMORY (pgvector; embedding column added via raw SQL migration) ───
+// The `embedding vector(1024)` column is added by the prisma/migrations/0001_pgvector_extension.sql
+// migration file — Prisma schema cannot declare it directly without the preview
+// flag. All vector ops go through psycopg in Python (tools/memory/retrieve.py).
+model VectorMemory {
+  id         String   @id @default(cuid())
+  brandId    String
+  sourceType String // "content_piece" | "interaction" | "approved_reply" | "brand_insight" | "competitor_post"
+  sourceId   String // FK-ish — not enforced (polymorphic)
+  content    String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, sourceType])
+  @@index([sourceId])
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// H4 — Paid / SEM, Conversion attribution, Multi-channel publishing, Reviews
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── PAID / SEM ───────────────────────────────────────────────────────────────
+enum AdPlatform {
+  GOOGLE_ADS
+  META_ADS
+  // DEPRECATED 2026-05-17 — LinkedIn ads CUT per audit. Retained for
+  // historical AdSpend rows.
+  LINKEDIN_ADS
+  SNAPCHAT_ADS
+  TIKTOK_ADS
+  PINTEREST_ADS
+  X_ADS
+  REDDIT_ADS
+}
+
+enum CampaignObjective {
+  AWARENESS
+  TRAFFIC
+  LEAD_GEN
+  CONVERSIONS
+  APP_INSTALLS
+  VIDEO_VIEWS
+  ENGAGEMENT
+  SALES
+  STORE_VISITS
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+  FAILED
+  ARCHIVED
+}
+
+enum BidStrategy {
+  MANUAL_CPC
+  MANUAL_CPM
+  TARGET_CPA
+  TARGET_ROAS
+  MAXIMIZE_CONVERSIONS
+  MAXIMIZE_CONVERSION_VALUE
+  MAXIMIZE_CLICKS
+  LOWEST_COST
+  COST_CAP
+  BID_CAP
+}
+
+enum AdFormat {
+  SINGLE_IMAGE
+  SINGLE_VIDEO
+  CAROUSEL
+  COLLECTION
+  STORY
+  REEL
+  RESPONSIVE_SEARCH
+  RESPONSIVE_DISPLAY
+  PERFORMANCE_MAX
+  TEXT_AD
+  SNAP_STORY_AD
+  SNAP_COLLECTION
+  PROMOTED_PIN
+}
+
+model Campaign {
+  id                String            @id @default(cuid())
+  brandId           String
+  platform          AdPlatform
+  externalId        String?           @unique
+  name              String
+  objective         CampaignObjective
+  status            CampaignStatus    @default(DRAFT)
+  dailyBudgetUsd    Float?
+  lifetimeBudgetUsd Float?
+  bidStrategy       BidStrategy
+  targetRoas        Float?
+  targetCpaUsd      Float?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  adSets      AdSet[]
+  spend       AdSpend[]
+  conversions Conversion[]
+
+  @@index([brandId, platform])
+  @@index([status])
+}
+
+model AdSet {
+  id               String         @id @default(cuid())
+  campaignId       String
+  externalId       String?
+  name             String
+  status           CampaignStatus @default(DRAFT)
+  targeting        Json // platform-specific JSON
+  dailyBudgetUsd   Float?
+  bidAmountUsd     Float?
+  schedule         Json?
+  optimizationGoal String?
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads      Ad[]
+
+  @@index([campaignId])
+}
+
+model AdCreative {
+  id             String     @id @default(cuid())
+  brandId        String
+  contentPieceId String?
+  platform       AdPlatform
+  format         AdFormat
+  headline       String?
+  primaryText    String?
+  description    String?
+  ctaType        String?
+  destinationUrl String
+  mediaAssetId   String?
+  variantLabel   String?
+  evalScore      Int?
+  metadata       Json?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  brand        Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contentPiece ContentPiece? @relation(fields: [contentPieceId], references: [id], onDelete: SetNull)
+  mediaAsset   MediaAsset?   @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  ads          Ad[]
+
+  @@index([brandId, platform])
+}
+
+model Ad {
+  id           String         @id @default(cuid())
+  adSetId      String
+  adCreativeId String
+  externalId   String?
+  status       CampaignStatus @default(DRAFT)
+  metadata     Json?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  adSet       AdSet        @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  adCreative  AdCreative   @relation(fields: [adCreativeId], references: [id], onDelete: Cascade)
+  spend       AdSpend[]
+  conversions Conversion[]
+
+  @@index([adSetId])
+}
+
+model AdSpend {
+  id                 String   @id @default(cuid())
+  campaignId         String
+  adId               String?
+  date               DateTime
+  impressions        Int      @default(0)
+  clicks             Int      @default(0)
+  conversions        Int      @default(0)
+  conversionValueUsd Float    @default(0)
+  spendUsd           Float    @default(0)
+  cpcUsd             Float?
+  cpmUsd             Float?
+  ctr                Float?
+  cvr                Float?
+  roas               Float?
+  raw                Json?
+  createdAt          DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ad       Ad?      @relation(fields: [adId], references: [id], onDelete: SetNull)
+
+  @@unique([campaignId, adId, date])
+  @@index([campaignId, date])
+  @@index([adId, date])
+}
+
+// PaidKeyword — distinct from organic SEO keyword analysis (volume, CPC, intent).
+model PaidKeyword {
+  id           String   @id @default(cuid())
+  brandId      String
+  keyword      String
+  matchType    String? // BROAD | PHRASE | EXACT
+  searchVolume Int?
+  cpcLowUsd    Float?
+  cpcHighUsd   Float?
+  competition  String? // LOW | MEDIUM | HIGH
+  difficulty   Int? // 0-100
+  intent       String? // INFO | NAV | TXN | COMM
+  language     String?
+  region       String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, keyword, matchType, region])
+  @@index([brandId])
+}
+
+model LandingPage {
+  id         String   @id @default(cuid())
+  brandId    String
+  slug       String
+  url        String
+  title      String?
+  hypothesis String?
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  brand    Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  variants LandingPageVariant[]
+
+  @@unique([brandId, slug])
+  @@index([brandId])
+}
+
+model LandingPageVariant {
+  id            String   @id @default(cuid())
+  landingPageId String
+  label         String // "control" | "A" | "B" | "C" ...
+  url           String
+  changeNotes   String?
+  trafficWeight Float    @default(0.5)
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  landingPage LandingPage       @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  views       LandingPageView[]
+
+  @@index([landingPageId])
+}
+
+model LandingPageView {
+  id                 String   @id @default(cuid())
+  variantId          String
+  occurredAt         DateTime @default(now())
+  visitorId          String
+  source             String?
+  medium             String?
+  campaign           String?
+  converted          Boolean  @default(false)
+  conversionValueUsd Float?
+
+  variant LandingPageVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([variantId, occurredAt])
+}
+
+// ─── CONVERSION ATTRIBUTION ───────────────────────────────────────────────────
+enum ConversionEventType {
+  PAGE_VIEW
+  ADD_TO_CART
+  INITIATE_CHECKOUT
+  PURCHASE
+  LEAD
+  SUBSCRIBE
+  COMPLETE_REGISTRATION
+  CONTACT
+  SCHEDULE
+  SEARCH
+  CUSTOM
+}
+
+enum AttributionModel {
+  LAST_CLICK
+  FIRST_CLICK
+  LINEAR
+  POSITION_BASED
+  TIME_DECAY
+  DATA_DRIVEN
+}
+
+model Conversion {
+  id                     String              @id @default(cuid())
+  brandId                String
+  externalId             String?
+  eventType              ConversionEventType
+  eventName              String?
+  valueUsd               Float?
+  currency               String              @default("USD")
+  occurredAt             DateTime
+  visitorId              String?
+  emailHash              String? // SHA-256 of normalized email
+  phoneHash              String?
+  utmSource              String?
+  utmMedium              String?
+  utmCampaign            String?
+  utmContent             String?
+  utmTerm                String?
+  attributionModel       AttributionModel    @default(LAST_CLICK)
+  attributedAdId         String?
+  attributedCampaignId   String?
+  attributedPublishJobId String?
+  metadata               Json?
+  rawPayload             Json?
+  createdAt              DateTime            @default(now())
+
+  brand      Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  campaign   Campaign?          @relation(fields: [attributedCampaignId], references: [id], onDelete: SetNull)
+  ad         Ad?                @relation(fields: [attributedAdId], references: [id], onDelete: SetNull)
+  publishJob PublishJob?        @relation(fields: [attributedPublishJobId], references: [id], onDelete: SetNull)
+  touches    AttributionTouch[]
+
+  @@unique([brandId, externalId])
+  @@index([brandId, eventType, occurredAt])
+  @@index([attributedCampaignId])
+  @@index([attributedAdId])
+}
+
+model AttributionTouch {
+  id             String   @id @default(cuid())
+  conversionId   String
+  touchpointType String // "ad" | "publish_job" | "organic_visit" | "direct" | "email" | "review"
+  touchpointId   String?
+  weight         Float    @default(1.0)
+  occurredAt     DateTime
+  source         String?
+  medium         String?
+  campaign       String?
+
+  conversion Conversion @relation(fields: [conversionId], references: [id], onDelete: Cascade)
+
+  @@index([conversionId])
+  @@index([touchpointType, touchpointId])
+}
+
+// ─── REVIEWS / REPUTATION ─────────────────────────────────────────────────────
+enum ReviewSource {
+  GOOGLE_BUSINESS
+  TRIPADVISOR
+  TRUSTPILOT
+  YELP
+  FACEBOOK
+  APPLE_MAPS
+  CUSTOM
+}
+
+model Review {
+  id           String       @id @default(cuid())
+  brandId      String
+  source       ReviewSource
+  externalId   String
+  authorName   String?
+  rating       Int // 1-5
+  text         String?
+  language     String?
+  occurredAt   DateTime
+  responded    Boolean      @default(false)
+  responseText String?
+  respondedAt  DateTime?
+  metadata     Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, source, externalId])
+  @@index([brandId, source])
+  @@index([rating])
+}
+
+// ─── WHATSAPP BUSINESS (CUT 2026-05-17 per docs/MODULE_AUDIT.md) ──────────────
+// Models WhatsAppConversation + WhatsAppMessage + enum WhatsAppMessageStatus
+// removed. Backing tables dropped via migration
+// 0103_phase_1b_drop_whatsapp. Historical data archived to
+// .tmp/archives/whatsapp_pre_cut_2026-05-17.jsonl (out of repo).
+// Brand.whatsappPhoneNumberId kept as deprecated column; not read by
+// new code.
+
+// ─── GOOGLE BUSINESS PROFILE (GBP) ────────────────────────────────────────────
+model GBPLocation {
+  id              String   @id @default(cuid())
+  brandId         String
+  externalId      String // GBP location_id (accounts/{aid}/locations/{lid})
+  name            String
+  address         String?
+  websiteUrl      String?
+  phone           String?
+  primaryCategory String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, externalId])
+  @@index([brandId])
+}
+
+model GBPPost {
+  id         String    @id @default(cuid())
+  brandId    String
+  locationId String // GBP location external id
+  externalId String?   @unique
+  topicType  String // STANDARD | EVENT | OFFER | ALERT
+  summary    String
+  ctaType    String?
+  ctaUrl     String?
+  mediaUrl   String?
+  startTime  DateTime?
+  endTime    DateTime?
+  status     String    @default("draft")
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@index([locationId])
+}
