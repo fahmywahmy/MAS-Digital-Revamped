@@ -1,0 +1,14 @@
+# Normalize line endings: LF in the repo AND the working tree. Keeps git
+# hooks runnable on Windows (a CRLF shebang breaks /bin/sh) and matches Linux CI.
+* text=auto eol=lf
+
+# Binary assets — never normalize.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.mp4  binary
+*.wav  binary
+*.pdf  binary
