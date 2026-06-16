@@ -1,0 +1,40 @@
+name: ci
+
+# Trust-layer guards for the revamp. Every check here BLOCKS — there are no
+# escape hatches. If a rule can't be enforced yet, it is left out, not faked.
+# (The legacy repo's CI had 11 OR-true guards that reported green while failing;
+#  this file is the deliberate opposite — and it greps itself to prove it.)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: LLM gateway is the only door to Anthropic
+        run: |
+          if grep -rIn --include='*.py' -E '^[[:space:]]*(import[[:space:]]+anthropic|from[[:space:]]+anthropic)' . 2>/dev/null \
+               | grep -v 'tools/utils/claude_client.py'; then
+            echo "FAIL: direct Anthropic SDK use outside the gateway (above)."; exit 1
+          fi
+          echo "OK: gateway is the only door to Anthropic"
+
+      - name: No parent-directory .env dependency
+        run: |
+          if grep -rIn --include='*.ts' --include='*.js' --include='*.json' --include='*.sh' -E '\.\./\.env' . 2>/dev/null \
+               | grep -v node_modules; then
+            echo "FAIL: code loads a parent-directory .env (load from this repo root instead)."; exit 1
+          fi
+          echo "OK: no ../.env dependency in code"
+
+      - name: No faked CI guards (reject OR-true escape hatches)
+        run: |
+          if grep -rIn -E '\|\|[[:space:]]*true' .github/workflows --include='*.yml' --include='*.yaml' 2>/dev/null; then
+            echo "FAIL: an OR-true escape hatch was found in a workflow (above)."; exit 1
+          fi
+          echo "OK: no faked guards"

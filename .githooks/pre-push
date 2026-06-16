@@ -1,0 +1,22 @@
+#!/bin/sh
+# pre-push guard — refuse to push when the Prisma schema or any migration has
+# UNCOMMITTED changes (working tree or staged). Synced storage (OneDrive) can
+# silently dehydrate/drop uncommitted work; this already cost the legacy repo a
+# lost RLS migration. See docs/ARCHITECTURE_REVIEW.md Phase 0.
+#
+# Installed via: git config core.hooksPath .githooks  (version-controlled).
+
+dirty=$(git status --porcelain -- '*schema.prisma' '*/migrations/*' 2>/dev/null)
+
+if [ -n "$dirty" ]; then
+  echo "------------------------------------------------------------"
+  echo "PUSH BLOCKED: uncommitted schema/migration changes:"
+  echo "$dirty"
+  echo ""
+  echo "Commit or stash them before pushing (easy to lose on synced storage)."
+  echo "Override (discouraged): git push --no-verify"
+  echo "------------------------------------------------------------"
+  exit 1
+fi
+
+exit 0

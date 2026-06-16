@@ -1,0 +1,41 @@
+# ── Secrets (this project loads its OWN .env at the repo root — never ../.env) ──
+.env
+.env.local
+.env.*.local
+credentials.json
+token.json
+
+# ── Node / Next ──
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.eslintcache
+
+# ── Python ──
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# ── Runtime / scratch ──
+.tmp/
+*.log
+
+# ── Media outputs ──
+*.mp4
+*.wav
+
+# ── OS / editor ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+~$*
