@@ -2,6 +2,11 @@
 # hooks runnable on Windows (a CRLF shebang breaks /bin/sh) and matches Linux CI.
 * text=auto eol=lf
 
+# Windows scripts must stay CRLF or cmd.exe can choke on labels/loops.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
 # Binary assets — never normalize.
 *.png  binary
 *.jpg  binary
