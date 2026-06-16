@@ -6,33 +6,33 @@ REM ---------------------------------------------------------------------------
 REM  Launch Webapp.bat  (MAS Digital Revamped)
 REM
 REM  Double-click to start the Next.js dev server and open the app in your
-REM  browser. If the server is already running, it just opens the browser.
+REM  browser. The dev server runs from the REPO ROOT via `npm run dev`, which
+REM  loads the repo-root .env (dotenv -e .env) and runs the webapp with those
+REM  vars in process.env -- the webapp itself never references a .env file.
 REM
 REM    1. If port 3000 is already listening -> open http://localhost:3000.
-REM    2. Otherwise -> start `npm run dev` in a labeled cmd window, then open
-REM       the splash page (.launcher\splash.html) which polls localhost:3000
-REM       and redirects automatically once Next.js finishes its first compile.
+REM    2. Otherwise -> `npm run dev` in a labeled cmd window, then open the
+REM       splash page (.launcher\splash.html) which polls localhost:3000 and
+REM       redirects automatically once Next.js finishes its first compile.
 REM ---------------------------------------------------------------------------
 
 set "REPO=%~dp0"
-set "WEBAPP=%REPO%webapp"
 set "SPLASH=%REPO%.launcher\splash.html"
 set "PORT=3000"
 
-REM -- Sanity: is the webapp present in this repo yet? -------------------------
-if not exist "%WEBAPP%\package.json" (
-  echo [Launcher] webapp not found at %WEBAPP%
-  echo [Launcher] The Next.js webapp has not been ported into this repo yet.
-  echo [Launcher] See PORTING_PLAN.md ^(section D, step 5^), then re-run this.
-  echo [Launcher] ^(Run this file from the repo root.^)
+REM -- Sanity: is the webapp present? -----------------------------------------
+if not exist "%REPO%webapp\package.json" (
+  echo [Launcher] webapp not found at %REPO%webapp
+  echo [Launcher] See PORTING_PLAN.md, then re-run this from the repo root.
   pause
   exit /b 1
 )
 
-REM -- First run: install dependencies once ------------------------------------
-if not exist "%WEBAPP%\node_modules" (
+REM -- First run: install once (root postinstall also installs the webapp and
+REM    generates the Prisma client). --
+if not exist "%REPO%node_modules" (
   echo [Launcher] node_modules not found - running npm install once...
-  pushd "%WEBAPP%"
+  pushd "%REPO%"
   call npm install
   if errorlevel 1 (
     echo [Launcher] npm install failed. See the output above.
@@ -55,7 +55,7 @@ if !errorlevel! equ 0 (
 REM -- Start the dev server in a separate, clearly labeled window. -------------
 echo [Launcher] Starting Next.js dev server in a new window...
 echo [Launcher] (Close that window when you're done - that stops the server.)
-start "MAS Webapp Server (do not close)" cmd /k "cd /d ""%WEBAPP%"" && npm run dev"
+start "MAS Webapp Server (do not close)" cmd /k "cd /d ""%REPO%"" && npm run dev"
 
 REM -- Open the splash so the user sees progress. -----------------------------
 if exist "%SPLASH%" (

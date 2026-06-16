@@ -2,21 +2,24 @@
   "name": "mas-digital-revamped",
   "version": "0.0.1",
   "private": true,
-  "description": "Lean agency-tool rebuild of MAS Digital. Data layer first.",
+  "description": "Lean agency-tool rebuild of MAS Digital.",
   "scripts": {
-    "db:generate": "prisma generate",
-    "db:validate": "dotenv -e .env -- prisma validate",
-    "db:deploy": "dotenv -e .env -- prisma migrate deploy",
-    "db:status": "dotenv -e .env -- prisma migrate status",
-    "db:resolve": "dotenv -e .env -- prisma migrate resolve",
-    "db:execute": "dotenv -e .env -- prisma db execute",
-    "db:studio": "dotenv -e .env -- prisma studio"
+    "dev": "dotenv -e .env -- npm --prefix webapp run dev",
+    "build": "npm --prefix webapp run build",
+    "start": "dotenv -e .env -- npm --prefix webapp run start",
+    "typecheck": "npm --prefix webapp run typecheck",
+    "webapp:install": "npm --prefix webapp install",
+    "postinstall": "npm --prefix webapp install",
+    "db:generate": "prisma generate --schema webapp/prisma/schema.prisma",
+    "db:validate": "dotenv -e .env -- prisma validate --schema webapp/prisma/schema.prisma",
+    "db:deploy": "dotenv -e .env -- prisma migrate deploy --schema webapp/prisma/schema.prisma",
+    "db:status": "dotenv -e .env -- prisma migrate status --schema webapp/prisma/schema.prisma",
+    "db:resolve": "dotenv -e .env -- prisma migrate resolve --schema webapp/prisma/schema.prisma",
+    "db:execute": "dotenv -e .env -- prisma db execute --schema webapp/prisma/schema.prisma",
+    "db:studio": "dotenv -e .env -- prisma studio --schema webapp/prisma/schema.prisma"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0",
     "prisma": "^6.19.3"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.19.3"
   }
 }
