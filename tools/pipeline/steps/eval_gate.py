@@ -1,93 +1,63 @@
-"""Step 4 — eval gate. Score the content against a 25-point rubric. A score at or
-above the floor (default 18/25) marks the ContentPiece publishable (IN_REVIEW);
-below the floor it is marked FAILED — the hard pre-publish floor.
+"""Step 4 — eval gate. The hard pre-publish floor.
 
-This is a quality floor, not a system error: a sub-floor score does not fail the
-*run* (the pipeline executed), it fails the *artifact*. The run records the
-verdict in its outputData.
+Scores the content with the calibrated judge (judge ≠ generator, locked rubric
+bands, deterministic guards — see tools/pipeline/eval_rubric.py). A pass marks the
+ContentPiece publishable (IN_REVIEW); a sub-floor score OR a hard guard failure
+marks it FAILED.
+
+This is a quality floor, not a system error: failing the artifact does not fail
+the *run* (the pipeline executed) — the run records the verdict in its outputData.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from tools.pipeline.context import PipelineContext, brand_summary, parse_step_json
-from tools.utils import claude_client
+from tools.pipeline.context import PipelineContext
+from tools.pipeline.eval_rubric import DEFAULT_JUDGE_MODEL, judge_content
 from tools.utils.db import connect
-
-_SYSTEM = (
-    "You are a strict content QA reviewer at a marketing agency. Score honestly; "
-    "do not inflate."
-)
-
-_RUBRIC = (
-    "Score each criterion 0-5 (integer): brand_fit, hook_strength, clarity, "
-    "cta_strength, platform_fit. total is their sum (0-25)."
-)
-
-_CRITERIA = ["brand_fit", "hook_strength", "clarity", "cta_strength", "platform_fit"]
-_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "scores": {
-            "type": "object",
-            "properties": {c: {"type": "integer"} for c in _CRITERIA},
-            "required": _CRITERIA,
-            "additionalProperties": False,
-        },
-        "total": {"type": "integer"},
-        "notes": {"type": "string"},
-    },
-    "required": ["scores", "total", "notes"],
-    "additionalProperties": False,
-}
 
 
 def run(ctx: PipelineContext) -> dict[str, Any]:
     creative = ctx.out("creative")
     min_score = int(ctx.step_config.get("min_score", 18))
     max_score = int(ctx.step_config.get("max_score", 25))
+    judge_model = ctx.step_config.get("judge_model", DEFAULT_JUDGE_MODEL)
 
-    prompt = (
-        f"{brand_summary(ctx.brand)}\n\n"
-        f"Content to review (platform: {creative['platform']}):\n"
-        f"SCRIPT:\n{creative['script']}\n\n"
-        f"CAPTION:\n{creative['caption']}\n\n"
-        f"{_RUBRIC} `notes` is one sentence on the weakest dimension."
-    )
-    res = claude_client.complete(
-        prompt=prompt,
-        system=_SYSTEM,
-        max_tokens=700,
-        json_schema=_SCHEMA,
-        agent_type=ctx.agent_type,
-        category="eval",
-        tool_name="pipeline.eval_gate",
+    verdict = judge_content(
+        brand=ctx.brand,
+        script=creative["script"],
+        caption=creative["caption"],
+        platform=creative["platform"],
+        min_score=min_score,
+        max_score=max_score,
+        judge_model=judge_model,
         brand_id=ctx.brand_id,
         run_id=ctx.run_id,
         budget_usd=ctx.budget_usd,
     )
-    data = parse_step_json(res.text, res.stop_reason)
-    total = int(data["total"])
-    notes = str(data.get("notes", ""))
-    passed = total >= min_score
 
-    new_status = "IN_REVIEW" if passed else "FAILED"
+    # Eval notes capture both the judge's note and any hard guard failures, so the
+    # operator sees *why* a piece was blocked, not just the number.
+    note_parts = [verdict["notes"]]
+    if verdict["hard_failed"]:
+        blocked = "; ".join(
+            f"{g['name']} ({g['detail']})" for g in verdict["guard_failures"] if g["hard"]
+        )
+        note_parts.append(f"BLOCKED by guards: {blocked}")
+    notes = " — ".join(p for p in note_parts if p)
+
+    new_status = "IN_REVIEW" if verdict["passed"] else "FAILED"
     with connect() as conn:
         conn.execute(
             '''UPDATE "ContentPiece"
                   SET "evalScore" = %s, "evalNotes" = %s,
                       status = %s::"ContentStatus", "updatedAt" = now()
                 WHERE id = %s''',
-            (total, notes, new_status, creative["content_piece_id"]),
+            (verdict["total"], notes, new_status, creative["content_piece_id"]),
         )
 
     return {
-        "total": total,
-        "max_score": max_score,
-        "min_score": min_score,
-        "passed": passed,
-        "scores": data.get("scores", {}),
-        "notes": notes,
+        **verdict,
         "content_status": new_status,
-        "cost_usd": res.cost_usd,
+        "notes": notes,
     }

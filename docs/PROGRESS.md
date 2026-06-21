@@ -30,8 +30,9 @@ immediately on approval.
 - [x] Worker (`-m tools.runtime.worker`; pg_notify + polling fallback) + idempotent task on derived run_id
 - [ ] NSSM service wrappers (webapp + worker) — written when schema is live (a worker with no queue is moot)
 - [ ] **Restart-survival proof** (kill worker mid-run → restart → run completes) — blocked on schema apply
-- [ ] Eval calibration: judge ≠ generator, locked rubric bands, deterministic guards
-- [ ] Human-scored gold set (20–40) + calibration report; **FAIL-path proof** (weak artifact blocked)
+- [x] Eval calibration: judge ≠ generator (Sonnet judge vs Opus generator), locked rubric bands, deterministic guards (`tools/pipeline/eval_rubric.py`)
+- [x] **FAIL-path + discrimination proof** (`scripts/check-eval-gate.py`): weak blocked (7/25), compliance violation hard-blocked, strong 23/25; live pipeline now scores 22/25 (no more 25/25 rubber-stamp)
+- [ ] Human-scored gold set (20–40 real artifacts) + correlation report — needs the real brand + operator (P3 activity)
 
 ## P2 — Operator console (UX/UI) — graded against DESIGN.md §5 ten rules
 - [ ] Console scaffold: Tailwind v4 tokens, fonts (Geist + IBM Plex Sans Arabic), theme, Cmd+K
