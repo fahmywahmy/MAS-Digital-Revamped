@@ -23,13 +23,12 @@ immediately on approval.
 - [x] Manifest pipeline + content vertical + eval gate + drift guard — `b0c10eb`
 
 ## P1 — Durable runtime + trustworthy eval  *(branch: feat/p1-durable-runtime)*
-- [x] Procrastinate 3.9 installed; runtime module built (`tools/runtime/{app,defer,tasks,worker,schema_sql}.py`)
-- [~] Dedicated `procrastinate` schema SQL generated + **shown for approval** (`db/procrastinate/install.generated.sql`) — **AWAITING YOUR OK to apply (I7)**
-- [ ] Schema applied to Supabase (gated — `scripts/apply-procrastinate-schema.py`, not run)
+- [x] Procrastinate 3.9 installed; runtime module built (`tools/runtime/{app,defer,tasks,worker,recovery,aio,schema_sql}.py`)
+- [x] Dedicated `procrastinate` schema generated, approved, **applied to Supabase** + function search_path hardening (footgun closed; Prisma `public` untouched)
 - [x] One typed `defer_pipeline()` helper (durable enqueue + idempotent run provisioning, no orphan window)
-- [x] Worker (`-m tools.runtime.worker`; pg_notify + polling fallback) + idempotent task on derived run_id
-- [ ] NSSM service wrappers (webapp + worker) — written when schema is live (a worker with no queue is moot)
-- [ ] **Restart-survival proof** (kill worker mid-run → restart → run completes) — blocked on schema apply
+- [x] Worker (`-m tools.runtime.worker`; async psycopg via SelectorEventLoop) + idempotent task + **self-heal recovery on startup**
+- [ ] NSSM service wrappers (webapp + worker) — next (now that the schema is live)
+- [x] **Restart-survival proof PASSED** (`scripts/prove-restart-survival.py`): worker killed mid-run → run stays RUNNING (not orphaned) → worker B recovers job [4] → COMPLETED, $0.0943 real cost
 - [x] Eval calibration: judge ≠ generator (Sonnet judge vs Opus generator), locked rubric bands, deterministic guards (`tools/pipeline/eval_rubric.py`)
 - [x] **FAIL-path + discrimination proof** (`scripts/check-eval-gate.py`): weak blocked (7/25), compliance violation hard-blocked, strong 23/25; live pipeline now scores 22/25 (no more 25/25 rubber-stamp)
 - [ ] Human-scored gold set (20–40 real artifacts) + correlation report — needs the real brand + operator (P3 activity)

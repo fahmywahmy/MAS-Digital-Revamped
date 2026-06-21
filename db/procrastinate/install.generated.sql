@@ -606,3 +606,19 @@ CREATE TRIGGER procrastinate_trigger_abort_requested_events_v1
 CREATE TRIGGER procrastinate_trigger_delete_jobs_v1
     BEFORE DELETE ON procrastinate_jobs
     FOR EACH ROW EXECUTE PROCEDURE procrastinate_unlink_periodic_defers_v1();
+
+
+-- Hardening (added by MAS): pin every procrastinate function's search_path so its
+-- triggers resolve regardless of the calling connection's search_path. Idempotent.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'procrastinate'
+  LOOP
+    EXECUTE format('ALTER FUNCTION %s SET search_path = procrastinate, public', r.sig);
+  END LOOP;
+END $$;

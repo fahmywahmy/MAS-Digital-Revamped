@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 
+from tools.runtime.aio import run_async
 from tools.runtime.app import app
 from tools.utils.db import connect
 
@@ -59,17 +60,20 @@ def defer_pipeline(
     The run executes on the worker, not here — this returns as soon as the job is
     durably committed.
     """
-    from tools.runtime.tasks import run_pipeline_task
 
-    with app.open():
-        job_id = run_pipeline_task.defer(
-            manifest_id=manifest_id,
-            brand_id=brand_id,
-            user_id=user_id,
-            seed=seed,
-            budget_usd=budget_usd,
-        )
+    async def _defer() -> int:
+        from tools.runtime.tasks import run_pipeline_task
 
+        async with app.open_async():
+            return await run_pipeline_task.defer_async(
+                manifest_id=manifest_id,
+                brand_id=brand_id,
+                user_id=user_id,
+                seed=seed,
+                budget_usd=budget_usd,
+            )
+
+    job_id = run_async(_defer())
     run_id = run_id_for_job(job_id)
     ensure_run(run_id, brand_id=brand_id, user_id=user_id, workflow_id=manifest_id, seed=seed)
     return run_id, job_id
