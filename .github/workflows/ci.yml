@@ -39,3 +39,12 @@ jobs:
             echo "FAIL: an OR-true escape hatch was found in a workflow (above)."; exit 1
           fi
           echo "OK: no faked guards"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pipelines are manifest-driven (no drift)
+        run: |
+          python -m pip install --quiet "PyYAML>=6.0"
+          python scripts/check-pipeline-drift.py

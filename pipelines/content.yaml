@@ -1,0 +1,33 @@
+# The ONE content-vertical manifest — single source of truth for the pipeline
+# (CLAUDE.md §2.2, ARCHITECTURE "One pipeline representation"). The runner reads
+# this; there is no parallel hardcoded step list. scripts/check-pipeline-drift.py
+# (CI-enforced) asserts every `step` below resolves to a registered implementation.
+id: content
+name: Content vertical — trends → strategy → creative → eval gate
+description: >
+  Generate one brand-scoped content piece from a seed, gated by a quality floor
+  before it is publishable. Each step calls the LLM gateway (cost accrues onto
+  the AgentRun) and persists its artifact.
+
+steps:
+  - name: trends
+    step: trends
+    agent_type: RESEARCH_STRATEGY
+
+  - name: strategy
+    step: strategy
+    agent_type: RESEARCH_STRATEGY
+
+  - name: creative
+    step: creative
+    agent_type: CREATIVE
+    config:
+      content_type: REEL      # ContentType enum
+      platform: INSTAGRAM     # Platform enum for the ContentCopy
+
+  - name: eval_gate
+    step: eval_gate
+    agent_type: ANALYTICS_SAFETY
+    config:
+      min_score: 18           # hard pre-publish floor (≥18/25)
+      max_score: 25

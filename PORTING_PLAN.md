@@ -15,7 +15,8 @@ Legacy repo: `../MAS-Digital-System` (read-only source; nothing here imports fro
       read endpoint `/api/costs` lands with the console slice (§D5).
 - [ ] **Tools layer** — `tools/**` (research, creative, seo, paid, utils). Port by vertical slice,
       not all at once (see §D ordering).
-- [ ] **Eval gate** — the ≥18/25 rubric harness. Keep as a hard pre-publish floor.
+- [x] **Eval gate** — the ≥18/25 rubric harness, wired as a hard pre-publish floor in the
+      content pipeline (`tools/pipeline/steps/eval_gate.py`).
 - [ ] **Learning loop** — brand-voice regenerator + `embed.py` + `retrieve.py` over pgvector.
       *Fix-on-port:* add a circuit-breaker so a bad regen can't silently degrade generation.
 - [ ] **Data layer** — `webapp/prisma/schema.prisma` + the clean bootstrapped Supabase DB
@@ -46,10 +47,12 @@ Legacy repo: `../MAS-Digital-System` (read-only source; nothing here imports fro
 2. [ ] **RLS decision:** for ≤10 trusted clients, ship with **app-layer authz as the boundary** and
        say so in the docs — *or* wire RLS honestly (least-priv DB role + one Prisma `$extends`
        injecting `app.current_user_id` + a cross-brand leak test). Pick one; no inert third copy.
-3. [ ] **One pipeline source of truth (YAML)** + a drift-guard test asserting every workflow names its
-       backing manifest. Delete the hardcoded orchestrator step list.
+3. [x] **One pipeline source of truth (YAML)** + a drift-guard test (`scripts/check-pipeline-drift.py`,
+       CI-enforced) asserting every workflow names its backing manifest and the runner has no
+       hardcoded step list.
 4. [ ] **Durable content pipeline** on Procrastinate via one typed `deferJob()` helper with `pg_notify`.
-       No fire-and-forget; a restart must not orphan a run.
+       No fire-and-forget; a restart must not orphan a run. *(Pipeline runs synchronously today; this
+       is the remaining half of §D4.)*
 5. [ ] **One `BaseAdsClient` + `AdSpendDAO`** instead of copy-pasted per-platform clients (if paid ports).
 6. [ ] **Doc/route parity test** — every route named in docs/sidebar resolves to a real directory.
 
@@ -60,8 +63,9 @@ Legacy repo: `../MAS-Digital-System` (read-only source; nothing here imports fro
 3. [x] **LLM gateway + cost ledger (fixed)**: `claude_client` writing real cost to `CostLog`;
        `scripts/prove-gateway.py` proves a call logs non-zero spend, accumulates onto the run, and
        the kill-switch aborts a run over budget.
-4. [ ] **One end-to-end vertical**: trends → strategy → creative → **eval gate** → persisted artifact,
-       run from one YAML manifest on the durable queue. This proves the whole spine on a small surface.
+4. [~] **One end-to-end vertical**: trends → strategy → creative → **eval gate** → persisted artifact,
+       run from one YAML manifest. ✅ Spine built & proven synchronously
+       (`scripts/run-content-pipeline.py`); 🔲 durable-queue execution is the remaining half (§C4).
 5. [ ] **Console for that slice**: list + run + view, behind app-layer authz, with the `/insights` hub.
 6. [ ] **Expand horizontally**: bring remaining tool verticals across, each with its eval + manifest.
 

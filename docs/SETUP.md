@@ -70,9 +70,27 @@ All Claude calls go through `tools/utils/claude_client.py` — the only file all
 import `anthropic` (CI-enforced). See [`ARCHITECTURE.md`](ARCHITECTURE.md) →
 "Cost & observability".
 
+## 6. Run the content vertical
+
+The content pipeline is defined by one manifest, `pipelines/content.yaml`. Prove it
+end-to-end for a disposable brand (real Opus calls, ~$0.09):
+
+```bash
+.venv/Scripts/python scripts/run-content-pipeline.py
+.venv/Scripts/python scripts/run-content-pipeline.py --seed "eid travel deals" --keep
+```
+
+Expect: an `AgentRun` that COMPLETED with real cost, a persisted `ContentPiece` +
+`ContentCopy`, and an eval-gate verdict (≥18/25 → `IN_REVIEW`, else `FAILED`). Check the
+manifest is drift-free (no DB/LLM needed):
+
+```bash
+.venv/Scripts/python scripts/check-pipeline-drift.py
+```
+
 ## What's NOT here yet
 
-The webapp, the tool verticals (research / creative / seo / paid), and the pipeline
-runner are not ported yet — see [`../PORTING_PLAN.md`](../PORTING_PLAN.md).
-`Launch Webapp.bat` will print "webapp not found" until the webapp lands (porting order
-section D, step 5).
+The durable job queue (Procrastinate — runs are synchronous today), the remaining tool
+verticals (seo / paid / community), and the webapp/console are not built yet — see
+[`../PORTING_PLAN.md`](../PORTING_PLAN.md). `Launch Webapp.bat` will print "webapp not
+found" until the webapp lands (porting order section D, step 5).

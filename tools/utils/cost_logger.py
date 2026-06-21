@@ -14,10 +14,10 @@ This module is the ONLY writer of CostLog and of AgentRun spend.
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 
 from tools.utils.db import connect
+from tools.utils.ids import new_id
 from tools.utils.registry import cost_usd
 
 VALID_AGENT_TYPES = frozenset(
@@ -46,9 +46,8 @@ class LoggedCost:
 
 
 def _gen_id() -> str:
-    # CostLog.id is an opaque String @id; a uuid hex is collision-resistant and
-    # never used as a foreign key.
-    return "c" + uuid.uuid4().hex
+    # CostLog.id is an opaque String @id, never used as a foreign key.
+    return new_id("c")
 
 
 def get_run_cost(run_id: str) -> float:

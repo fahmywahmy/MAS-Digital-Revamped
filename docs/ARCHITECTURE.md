@@ -13,11 +13,12 @@
 | Data layer — Prisma schema + Supabase + migration chain | ✅ BUILT |
 | Webapp launcher (`Launch/Stop Webapp.bat` + splash) | ✅ BUILT (waiting on the webapp) |
 | LLM gateway — `claude_client` + Postgres cost ledger | ✅ BUILT |
-| Tools — research / creative / seo / paid | 🔲 PLANNED (next) |
-| Pipeline runner — one YAML source of truth | 🔲 PLANNED |
-| Durable job queue — Procrastinate (`deferJob` + `pg_notify`) | 🔲 PLANNED |
+| Pipeline runner — one YAML source of truth (drift-guarded) | ✅ BUILT |
+| Content vertical — trends → strategy → creative → eval gate | ✅ BUILT |
+| Eval gate (≥ quality floor before publish) | ✅ BUILT |
+| Tools — remaining verticals (seo / paid / community) | 🔲 PLANNED |
+| Durable job queue — Procrastinate (`deferJob` + `pg_notify`) | 🔲 PLANNED (next) |
 | Webapp / operator console | 🔲 PLANNED |
-| Eval gate (≥ quality floor before publish) | 🔲 PLANNED |
 | Learning loop — brand-voice regen + pgvector retrieval | 🔲 PLANNED |
 
 ## The shape (lean version)
@@ -52,11 +53,30 @@ for platform scale:
 - Migration chain is self-contained & replayable: `0000_init` then `0001_pgvector`
   (extension/column ordered *after* the table — the legacy bug, fixed).
 
-## Execution & runtime (🔲 PLANNED)
+## Pipeline (✅ BUILT — content vertical)
 
-Webapp (Next.js) deploys as the control plane. Python tools run on the same host;
-long/expensive work is deferred to Procrastinate so a restart can't orphan a run as
-permanently `RUNNING`. Artifacts persist to storage, not ephemeral local disk.
+One YAML manifest is the single source of truth (`pipelines/content.yaml`). The runner
+(`tools/pipeline/runner.py`) walks the manifest's steps — there is **no** parallel
+hardcoded orchestrator — resolving each through one step registry. The CI guard
+`scripts/check-pipeline-drift.py` asserts every manifest step resolves *and* the runner
+names no step literals.
+
+The content vertical runs **trends → strategy → creative → eval gate**: each step calls
+the gateway with the run's id (so real cost accrues), uses structured outputs for
+schema-valid JSON, and persists its artifact (`TrendScan → StrategyBrief → CreativeBrief
+→ ContentPiece + ContentCopy`). The **eval gate** is a hard floor: a score ≥ the
+manifest's `min_score` (18/25) marks the `ContentPiece` publishable (`IN_REVIEW`); below
+it the piece is `FAILED` and cannot publish. A step error (incl. the kill-switch
+tripping) fails the whole `AgentRun`. `scripts/run-content-pipeline.py` proves it
+end-to-end for a disposable brand.
+
+## Execution & runtime (partially built)
+
+The pipeline runs **synchronously** today (the runner executes in-process). The next
+step is durability: long/expensive runs deferred to **Procrastinate** via one typed
+`deferJob()` helper so a restart can't orphan a run as permanently `RUNNING`
+(🔲 PLANNED). The webapp (Next.js) will deploy as the control plane on the same host;
+artifacts persist to storage, not ephemeral local disk.
 
 ## Cost & observability (✅ BUILT — fix-on-port)
 

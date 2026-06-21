@@ -63,6 +63,7 @@ def complete(
     max_tokens: int = 4096,
     thinking: bool = False,
     effort: str | None = None,
+    json_schema: dict[str, Any] | None = None,
     # accounting (what the ledger records)
     agent_type: str = "ORCHESTRATOR",
     category: str = "general",
@@ -75,7 +76,9 @@ def complete(
 
     Provide exactly one of `prompt` or `messages`. When `run_id` and
     `budget_usd` are both set, the kill-switch aborts the call if the run has
-    already reached its budget.
+    already reached its budget. Pass `json_schema` to constrain the reply to a
+    schema-valid JSON object (structured outputs) — the robust way to get
+    parseable JSON out of a model that otherwise narrates with thinking off.
     """
     if (prompt is None) == (messages is None):
         raise ValueError("Pass exactly one of `prompt` or `messages`.")
@@ -95,8 +98,14 @@ def complete(
         request["system"] = system
     if thinking:
         request["thinking"] = {"type": "adaptive"}
+
+    output_config: dict[str, Any] = {}
     if effort is not None:
-        request["output_config"] = {"effort": effort}
+        output_config["effort"] = effort
+    if json_schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": json_schema}
+    if output_config:
+        request["output_config"] = output_config
 
     response = _get_client().messages.create(**request)
 
