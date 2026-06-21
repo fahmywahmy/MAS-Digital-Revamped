@@ -12,8 +12,8 @@
 |---|---|
 | Data layer — Prisma schema + Supabase + migration chain | ✅ BUILT |
 | Webapp launcher (`Launch/Stop Webapp.bat` + splash) | ✅ BUILT (waiting on the webapp) |
-| LLM gateway — `claude_client` + Postgres cost ledger | 🔲 PLANNED (next) |
-| Tools — research / creative / seo / paid | 🔲 PLANNED |
+| LLM gateway — `claude_client` + Postgres cost ledger | ✅ BUILT |
+| Tools — research / creative / seo / paid | 🔲 PLANNED (next) |
 | Pipeline runner — one YAML source of truth | 🔲 PLANNED |
 | Durable job queue — Procrastinate (`deferJob` + `pg_notify`) | 🔲 PLANNED |
 | Webapp / operator console | 🔲 PLANNED |
@@ -58,12 +58,25 @@ Webapp (Next.js) deploys as the control plane. Python tools run on the same host
 long/expensive work is deferred to Procrastinate so a restart can't orphan a run as
 permanently `RUNNING`. Artifacts persist to storage, not ephemeral local disk.
 
-## Cost & observability (🔲 PLANNED — fix-on-port)
+## Cost & observability (✅ BUILT — fix-on-port)
 
 The legacy's headline `$80/mo` control was fiction (the DB table the UI read was never
-written). Here, the cost ledger is wired correctly on the gateway port: DB-primary,
-run-total accumulation, a real kill-switch — verified by a run that shows non-zero cost
-in the dashboard.
+written). Here the cost ledger is wired correctly and **verified end-to-end**:
+
+- **One door to Anthropic** — `tools/utils/claude_client.py` is the only file that
+  imports `anthropic` (CI-enforced). Everything calls `complete()`.
+- **DB-primary ledger** — every call writes a `CostLog` row (the table `/api/costs`
+  will read), priced from the one model table `tools/utils/registry.py` across all four
+  token buckets (input / output / cache-read / cache-write).
+- **Run-total accumulation** — per-call spend accumulates onto the owning `AgentRun`
+  (`costUsd` / `tokensUsed`) in the same transaction as the `CostLog` write, so the
+  ledger and the run total cannot drift.
+- **Real kill-switch** — `cost_logger.check_budget()` runs **before** each call and
+  raises `BudgetExceededError` to abort a run already over budget. Not a `print()`.
+
+`python scripts/prove-gateway.py` proves all four with real (sub-cent) calls: non-zero
+`CostLog` rows, an accumulating `AgentRun` total, and a third call aborted pre-spend by
+the kill-switch — then it deletes the disposable rows it created.
 
 ## Security & tenancy (partially built)
 

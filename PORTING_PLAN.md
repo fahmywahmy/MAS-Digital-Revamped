@@ -10,9 +10,9 @@ Legacy repo: `../MAS-Digital-System` (read-only source; nothing here imports fro
 
 ## A. PORT (keep — the good ~60%)
 
-- [ ] **LLM gateway** — `tools/utils/claude_client.py` (+ `cost_logger.py`, `registry.py`, config).
-      *Fix-on-port:* cost writes to Postgres `CostLog` as primary (see §C1). Keep its shape; it's
-      the best-engineered part of the system.
+- [x] **LLM gateway** — `tools/utils/claude_client.py` (+ `cost_logger.py`, `registry.py`, `config.py`).
+      *Fix-on-port done:* cost writes to Postgres `CostLog` as primary (see §C1); the dashboard
+      read endpoint `/api/costs` lands with the console slice (§D5).
 - [ ] **Tools layer** — `tools/**` (research, creative, seo, paid, utils). Port by vertical slice,
       not all at once (see §D ordering).
 - [ ] **Eval gate** — the ≥18/25 rubric harness. Keep as a hard pre-publish floor.
@@ -55,10 +55,11 @@ Legacy repo: `../MAS-Digital-System` (read-only source; nothing here imports fro
 
 ## D. Suggested porting order (vertical slices, prove the spine first)
 
-1. [ ] **Foundation** (this commit): independent repo, hooks, CI stub, env template, founding docs.
-2. [ ] **Data layer**: port the pruned Prisma schema; point at the existing Supabase; `migrate`.
-3. [ ] **LLM gateway + cost ledger (fixed)**: `claude_client` writing real cost to `CostLog`;
-       a tiny script proves a call logs non-zero spend the dashboard can read.
+1. [x] **Foundation**: independent repo, hooks, CI stub, env template, founding docs.
+2. [x] **Data layer**: port the pruned Prisma schema; point at the existing Supabase; `migrate`.
+3. [x] **LLM gateway + cost ledger (fixed)**: `claude_client` writing real cost to `CostLog`;
+       `scripts/prove-gateway.py` proves a call logs non-zero spend, accumulates onto the run, and
+       the kill-switch aborts a run over budget.
 4. [ ] **One end-to-end vertical**: trends → strategy → creative → **eval gate** → persisted artifact,
        run from one YAML manifest on the durable queue. This proves the whole spine on a small surface.
 5. [ ] **Console for that slice**: list + run + view, behind app-layer authz, with the `/insights` hub.

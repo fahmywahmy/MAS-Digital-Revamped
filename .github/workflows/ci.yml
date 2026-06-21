@@ -18,7 +18,8 @@ jobs:
 
       - name: LLM gateway is the only door to Anthropic
         run: |
-          if grep -rIn --include='*.py' -E '^[[:space:]]*(import[[:space:]]+anthropic|from[[:space:]]+anthropic)' . 2>/dev/null \
+          if grep -rIn --include='*.py' --exclude-dir=.venv --exclude-dir=venv --exclude-dir=node_modules \
+               -E '^[[:space:]]*(import[[:space:]]+anthropic|from[[:space:]]+anthropic)' . 2>/dev/null \
                | grep -v 'tools/utils/claude_client.py'; then
             echo "FAIL: direct Anthropic SDK use outside the gateway (above)."; exit 1
           fi

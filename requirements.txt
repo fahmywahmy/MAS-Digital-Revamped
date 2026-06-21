@@ -1,0 +1,10 @@
+# MAS Digital Revamped — Python toolchain.
+# Install into the repo-root .venv:  python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
+#
+# The LLM gateway is the ONLY code allowed to import `anthropic` (CI-enforced —
+# see .github/workflows/ci.yml). Everything else goes through
+# tools/utils/claude_client.py.
+
+anthropic>=0.49.0      # LLM gateway (tools/utils/claude_client.py ONLY)
+psycopg[binary]>=3.2   # Postgres — cost ledger writes + vector ops
+python-dotenv>=1.0     # repo-root .env loading (never ../.env)
