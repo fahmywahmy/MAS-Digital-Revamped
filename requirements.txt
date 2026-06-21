@@ -9,3 +9,4 @@ anthropic>=0.49.0      # LLM gateway (tools/utils/claude_client.py ONLY)
 psycopg[binary]>=3.2   # Postgres — cost ledger writes + vector ops
 python-dotenv>=1.0     # repo-root .env loading (never ../.env)
 PyYAML>=6.0            # pipeline manifest parsing (single source of truth)
+procrastinate>=3.9     # durable job queue (Postgres-backed; dedicated `procrastinate` schema)

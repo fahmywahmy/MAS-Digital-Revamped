@@ -22,13 +22,14 @@ immediately on approval.
 - [x] LLM gateway + cost ledger + kill-switch — `56326a4`
 - [x] Manifest pipeline + content vertical + eval gate + drift guard — `b0c10eb`
 
-## P1 — Durable runtime + trustworthy eval
-- [ ] Procrastinate installed; dedicated `procrastinate` schema SQL drafted + **shown for approval**
-- [ ] Schema applied to Supabase (after approval)
-- [ ] One typed `deferJob()` helper (transactional enqueue)
-- [ ] Worker (pg_notify + polling fallback) + AgentRun lifecycle hardening (no orphaned RUNNING)
-- [ ] NSSM service wrappers (webapp + worker) replacing `.bat` as the durable path
-- [ ] **Restart-survival proof** (kill worker mid-run → restart → run completes)
+## P1 — Durable runtime + trustworthy eval  *(branch: feat/p1-durable-runtime)*
+- [x] Procrastinate 3.9 installed; runtime module built (`tools/runtime/{app,defer,tasks,worker,schema_sql}.py`)
+- [~] Dedicated `procrastinate` schema SQL generated + **shown for approval** (`db/procrastinate/install.generated.sql`) — **AWAITING YOUR OK to apply (I7)**
+- [ ] Schema applied to Supabase (gated — `scripts/apply-procrastinate-schema.py`, not run)
+- [x] One typed `defer_pipeline()` helper (durable enqueue + idempotent run provisioning, no orphan window)
+- [x] Worker (`-m tools.runtime.worker`; pg_notify + polling fallback) + idempotent task on derived run_id
+- [ ] NSSM service wrappers (webapp + worker) — written when schema is live (a worker with no queue is moot)
+- [ ] **Restart-survival proof** (kill worker mid-run → restart → run completes) — blocked on schema apply
 - [ ] Eval calibration: judge ≠ generator, locked rubric bands, deterministic guards
 - [ ] Human-scored gold set (20–40) + calibration report; **FAIL-path proof** (weak artifact blocked)
 
