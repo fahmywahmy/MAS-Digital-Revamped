@@ -27,7 +27,7 @@ immediately on approval.
 - [x] Dedicated `procrastinate` schema generated, approved, **applied to Supabase** + function search_path hardening (footgun closed; Prisma `public` untouched)
 - [x] One typed `defer_pipeline()` helper (durable enqueue + idempotent run provisioning, no orphan window)
 - [x] Worker (`-m tools.runtime.worker`; async psycopg via SelectorEventLoop) + idempotent task + **self-heal recovery on startup**
-- [ ] NSSM service wrappers (webapp + worker) — next (now that the schema is live)
+- [x] NSSM service wrappers + foreground `Run Worker.bat` (`deploy/windows/*`, `deploy/README.md`) — operator-run; worker binary proven, service install not yet run on a host (honest)
 - [x] **Restart-survival proof PASSED** (`scripts/prove-restart-survival.py`): worker killed mid-run → run stays RUNNING (not orphaned) → worker B recovers job [4] → COMPLETED, $0.0943 real cost
 - [x] Eval calibration: judge ≠ generator (Sonnet judge vs Opus generator), locked rubric bands, deterministic guards (`tools/pipeline/eval_rubric.py`)
 - [x] **FAIL-path + discrimination proof** (`scripts/check-eval-gate.py`): weak blocked (7/25), compliance violation hard-blocked, strong 23/25; live pipeline now scores 22/25 (no more 25/25 rubber-stamp)
