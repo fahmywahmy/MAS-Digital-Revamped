@@ -1,48 +1,86 @@
-:root { color-scheme: dark; }
+@import "tailwindcss";
+
+/* ════════════════════════════════════════════════════════════════════════
+   MAS Console design tokens — see docs/DESIGN.md.
+   Dark-default, neutral-led (cool slate), ONE accent (teal #12A594). Text is
+   never pure white; depth = surface + hairline border, not shadow. Tight radii.
+   No purple, no gradient-on-black. Every value here is a decision, not a default.
+   ════════════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  /* Fonts (wired by next/font in layout.tsx) */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-arabic: var(--font-arabic), var(--font-geist-sans), sans-serif;
+
+  /* Neutrals (cool slate, dark) — canvas → panels → hairlines → text */
+  --color-canvas: #0f1011;       /* app background (slate-dark 1) */
+  --color-panel: #17181a;        /* cards / surfaces (slate-dark 2) */
+  --color-panel-2: #1d1f22;      /* raised / hover surface (slate-dark 3) */
+  --color-hairline: #ffffff14;   /* 8% — subtle border */
+  --color-hairline-strong: #ffffff26; /* 15% — interactive border */
+  --color-ink: #edeef0;          /* primary text (slate-dark 12, not pure white) */
+  --color-subtle: #b0b4ba;       /* muted text (slate-dark 11) */
+  --color-faint: #6b7177;        /* faint labels */
+
+  /* Accent — teal, used only for meaning (active, primary, selection) */
+  --color-brand: #12a594;
+  --color-brand-hover: #0e9888;
+  --color-brand-ink: #fbfefd;    /* text/icon on a solid brand fill */
+
+  /* Semantic */
+  --color-success: #30a46c;
+  --color-warning: #ffc53d;
+  --color-danger: #e5484d;
+
+  /* Radii — tight = tool, not toy */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Motion — feedback, not decoration */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+
+html {
+  color-scheme: dark;
+  background: var(--color-canvas);
+}
+
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: #0b0f14;
-  color: #e6edf3;
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
-.wrap { max-width: 760px; margin: 0 auto; padding: 3rem 1.25rem; }
-h1 { font-size: 1.6rem; margin: 0 0 .25rem; font-weight: 650; }
-h2 { font-size: 1rem; margin: 0 0 .6rem; font-weight: 600; }
-.dim { color: #9aa7b4; }
-.small { font-size: .8rem; }
-.err { color: #f87171; }
-.ok { color: #4ade80; }
-.card {
-  border: 1px solid #1f2933;
-  background: #0e141b;
-  border-radius: 12px;
-  padding: 1.1rem 1.25rem;
-  margin-top: 1.25rem;
+
+/* Tabular figures everywhere numbers matter (costs, ids, scores align in columns) */
+.tabular { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* Arabic content: larger, more line-height for tashkeel; never letter-spaced. */
+[lang="ar"], .font-arabic {
+  font-family: var(--font-arabic);
+  line-height: 1.85;
+  letter-spacing: normal;
 }
-.row { padding: .3rem 0; border-top: 1px solid #161d26; }
-.row:first-of-type { border-top: 0; }
-.btn, button {
-  display: inline-block;
-  margin-top: 1rem;
-  padding: .55rem 1.1rem;
-  border-radius: 8px;
-  border: 0;
-  background: #3b82f6;
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
+
+/* Focus: always visible, accent ring, never removed without replacement. */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
-button:disabled { opacity: .5; cursor: default; }
-.form { display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem; }
-.form input {
-  padding: .55rem .7rem;
-  border-radius: 8px;
-  border: 1px solid #2a3645;
-  background: #0b0f14;
-  color: #e6edf3;
-  font: inherit;
+
+/* Honor reduced-motion: reduce, don't strip. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

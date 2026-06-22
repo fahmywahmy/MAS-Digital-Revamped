@@ -33,8 +33,8 @@ immediately on approval.
 - [x] **FAIL-path + discrimination proof** (`scripts/check-eval-gate.py`): weak blocked (7/25), compliance violation hard-blocked, strong 23/25; live pipeline now scores 22/25 (no more 25/25 rubber-stamp)
 - [ ] Human-scored gold set (20–40 real artifacts) + correlation report — needs the real brand + operator (P3 activity)
 
-## P2 — Operator console (UX/UI) — graded against DESIGN.md §5 ten rules
-- [ ] Console scaffold: Tailwind v4 tokens, fonts (Geist + IBM Plex Sans Arabic), theme, Cmd+K
+## P2 — Operator console (UX/UI) — graded against DESIGN.md §5 ten rules  *(on main)*
+- [~] Console scaffold: Tailwind v4 + tokens (teal/slate, dark), fonts (Geist + IBM Plex Sans Arabic), app shell (receding sidebar + topbar), restyled sign-in + Overview. **Builds + typechecks; browser-visual check still pending.** Cmd+K palette still to wire.
 - [ ] Auth-gated shell + brand switcher + app-layer brand-access predicate (one shared fn)
 - [ ] Run list + run detail (live status, stage timeline, streamed logs, spent/cap bar, cost by token type)
 - [ ] `/api/costs` reading the one ledger
