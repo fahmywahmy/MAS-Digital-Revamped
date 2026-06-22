@@ -12,8 +12,11 @@ from typing import Any
 import yaml
 
 from tools.pipeline.steps import STEP_REGISTRY
-from tools.utils.config import REPO_ROOT
 
+# Resolve the repo root locally rather than importing tools.utils.config — that
+# pulls in python-dotenv, and the CI drift guard must stay import-light (PyYAML +
+# the registry only, no DB/dotenv/anthropic). tools/pipeline/manifest.py → root.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PIPELINES_DIR = REPO_ROOT / "pipelines"
 
 
